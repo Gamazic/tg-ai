@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from aiogram.exceptions import TelegramAPIError
 from db import Database, Message, NewDb
 from ai import AskService, AI
+from account import Account
 from dotenv import load_dotenv
 import os
 import instaloader
@@ -31,6 +32,7 @@ dp = Dispatcher(storage=storage)
 msg_db = Database()
 model_db = NewDb("ai.db")
 ai = AI(xai_api_key=XAI_API_KEY, openai_api_key=OPENAI_API_KEY)
+account_service = Account(msg_db)
 service = AskService(
     ai=ai,
     db=msg_db,
@@ -199,6 +201,31 @@ async def spent_command(message: types.Message):
     """Handle the /spent command to get total spend for the chat"""
     total_spend = msg_db.get_total_spend(message.chat.id)
     await message.answer(f"Total spend for this chat: ${total_spend:.6f}")
+
+
+@dp.message(Command("pop_up"))
+async def pop_up_command(message: types.Message):
+    """Handle the /pop_up command to add funds to the chat balance"""
+    if message.text is None:
+        await message.answer("Use format: /pop_up <amount>")
+        return
+
+    parts = message.text.split(" ", maxsplit=1)
+    if len(parts) != 2:
+        await message.answer("Use format: /pop_up <amount>")
+        return
+
+    try:
+        amount = float(parts[1])
+    except ValueError:
+        await message.answer("Please provide a valid amount")
+        return
+
+    account_service.pop_up(message.chat.id, amount)
+    balance = account_service.get_balance(message.chat.id)
+    await message.answer(
+        f"Balance topped up. Current balance: ${balance:.6f}"
+    )
 
 
 @dp.message(Command("ask"))

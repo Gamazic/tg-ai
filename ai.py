@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from db import Database, Message, NewDb
+from account import Account
 from datetime import datetime
 
 PROMPT_BOT = """
@@ -151,6 +152,7 @@ class AskService:
     ):
         self.ai = ai
         self.db = db
+        self.account = Account(db)
         self.model_db = model_db
         self.max_context_words = max_context_words
         self.max_completion_tokens = max_completion_tokens
@@ -181,6 +183,7 @@ class AskService:
         self.db.save_msg(
             Message(chat_id, datetime.now(), 0, "AIBot", completion.content)
         )
+        self.account.charge(chat_id, completion.price)
 
         return completion.content
 

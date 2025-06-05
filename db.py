@@ -94,6 +94,20 @@ class Database:
     def __spend_file_name(self, chat_id: int) -> str:
         return f"spend_{chat_id}.txt"
 
+    def get_balance(self, chat_id: int) -> float:
+        filename = self.__balance_file_name(chat_id)
+        if not os.path.exists(filename):
+            return 0.0
+        with open(filename, "r", encoding="utf-8") as f:
+            return float(f.read())
+
+    def __balance_file_name(self, chat_id: int) -> str:
+        return f"balance_{chat_id}.txt"
+
+    def save_balance(self, chat_id: int, balance: float) -> None:
+        filename = self.__balance_file_name(chat_id)
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(str(balance))
 
 class NewDb:
     def __init__(self, db_name: str = "chat_models.db"):
