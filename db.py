@@ -2,6 +2,8 @@ from datetime import datetime
 from dataclasses import dataclass
 import os
 from file_read_backwards import FileReadBackwards
+import sqlite3
+from typing import Optional
 
 
 @dataclass
@@ -91,3 +93,50 @@ class Database:
 
     def __spend_file_name(self, chat_id: int) -> str:
         return f"spend_{chat_id}.txt"
+
+
+class NewDb:
+    def __init__(self, db_name: str = "chat_models.db"):
+        self.db_name = db_name
+        self._init_db()
+
+    def _init_db(self):
+        """Initialize the database and create necessary tables if they don't exist."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_models (
+                    chat_id INTEGER PRIMARY KEY,
+                    model_name TEXT NOT NULL
+                )
+            """
+            )
+            conn.commit()
+
+    def save_model(self, chat_id: int, model_name: str) -> None:
+        """Save or update the model name for a specific chat ID."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO chat_models (chat_id, model_name)
+                VALUES (?, ?)
+            """,
+                (chat_id, model_name),
+            )
+            conn.commit()
+
+    def get_model(self, chat_id: int) -> Optional[str]:
+        """Retrieve the model name for a specific chat ID."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT model_name FROM chat_models
+                WHERE chat_id = ?
+            """,
+                (chat_id,),
+            )
+            result = cursor.fetchone()
+            return result[0] if result else None

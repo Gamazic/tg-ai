@@ -6,30 +6,36 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from datetime import datetime, timedelta
 from aiogram.exceptions import TelegramAPIError
-from db import Database, Message
-from ai import AskService
+from db import Database, Message, NewDb
+from ai import AskService, AI
 from dotenv import load_dotenv
 import os
+import instaloader
+from urllib.parse import urlparse
 
 # Load environment variables
 load_dotenv()
 
 # Get token and API key from environment variables
 TOKEN = os.getenv("BOT_TOKEN")
-API_KEY = os.getenv("API_KEY")
+XAI_API_KEY = os.getenv("XAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-if not TOKEN or not API_KEY:
-    raise ValueError("BOT_TOKEN and API_KEY must be set in .env file")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN must be set in .env file")
 
 # Initialize bot and dispatcher with memory storage
 storage = MemoryStorage()
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=storage)
 msg_db = Database()
+model_db = NewDb("ai.db")
+ai = AI(xai_api_key=XAI_API_KEY, openai_api_key=OPENAI_API_KEY)
 service = AskService(
-    API_KEY,
-    msg_db,
-    max_completion_tokens=1000,
+    ai=ai,
+    db=msg_db,
+    model_db=model_db,
+    max_completion_tokens=5000,
     max_history_depth=1000,
     max_context_words=10000,
 )
@@ -243,6 +249,72 @@ async def ask_command(message: types.Message):
     await message.answer(answer)
 
 
+@dp.message(Command("set_model"))
+async def set_model_command(message: types.Message):
+    """Handle the /set_model command to set AI model for the chat"""
+    command_parts = message.text.split(" ", maxsplit=1)
+    if len(command_parts) != 2:
+        await message.answer("Please provide a model name after /set_model")
+        return
+
+    model = command_parts[1]
+    try:
+        service.set_chat_model(message.chat.id, model)
+        await message.answer(f"Successfully set model to {model}")
+    except ValueError as e:
+        await message.answer("Failed to set model")
+        raise
+
+
+@dp.message(Command("get_model"))
+async def get_model_command(message: types.Message):
+    """Handle the /get_model command to get AI model for the chat"""
+    model = service.get_chat_model(message.chat.id)
+    await message.answer(f"Current model: {model}")
+
+
+@dp.message(
+    lambda message: message.text
+    and "instagram.com" in message.text
+    and "/reel/" in message.text
+)
+async def handle_instagram_link(message: types.Message):
+    """Handle Instagram reel links by streaming video directly to Telegram"""
+    # Initialize instaloader in memory
+    L = instaloader.Instaloader(
+        download_videos=True,
+        download_video_thumbnails=False,
+        download_geotags=False,
+        download_comments=False,
+        save_metadata=False,
+        compress_json=False,
+    )
+
+    # Extract shortcode from URL
+    parsed_url = urlparse(message.text)
+    shortcode = parsed_url.path.strip("/").split("/")[-1]
+
+    try:
+        # Get the post
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
+    except Exception as e:
+        await message.reply(f"Failed to fetch Instagram post: {str(e)}")
+        return
+
+    if not post.is_video:
+        await message.reply("The provided URL is not a video Reel")
+        return
+
+    # Get video URL directly
+    video_url = post.video_url
+    # Send video directly using URL
+    await bot.send_video(
+        chat_id=message.chat.id,
+        video=video_url,
+        reply_to_message_id=message.message_id,
+    )
+
+
 # handle every message in group
 @dp.message()
 async def handle_message(message: types.Message):
@@ -256,6 +328,15 @@ async def handle_message(message: types.Message):
             message.text or "",  # Use empty string if text is None
         )
     )
+
+
+# @dp.error()
+# async def error_handler(event: types.ErrorEvent):
+#     print(f"error: {event}")
+#     await bot.send_message(
+#         event.update.message.chat.id,
+#         "Ошибка, попробуйте позже.",
+#     )
 
 
 if __name__ == "__main__":
